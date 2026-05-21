@@ -48,7 +48,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ar" dir="rtl" className="dark bg-background">
-      <body className={`${cairo.className} font-sans antialiased`}>
+      <body className={`${cairo.variable} font-sans antialiased`}>
         {children}
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
