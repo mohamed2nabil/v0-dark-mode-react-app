@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  LayoutGrid,
   MessageSquare,
   Database,
   Clock,
@@ -26,7 +25,7 @@ import {
   User as FirebaseUser,
 } from "firebase/auth";
 
-type TabType = "dashboard" | "whatsapp" | "scraper" | "logs";
+type TabType = "whatsapp" | "scraper" | "logs";
 type TerminalLog = { id: number; message: string; type: "info" | "success" | "error" };
 
 // Login Component
@@ -157,14 +156,27 @@ function LoginScreen() {
 function Dashboard({ user, onLogout }: { user: FirebaseUser; onLogout: () => void }) {
   const [activeTab, setActiveTab] = useState<TabType>("whatsapp");
   const [terminalLogs, setTerminalLogs] = useState<TerminalLog[]>([]);
-  const [isHovering, setIsHovering] = useState(false);
+  const [isActive, setIsActive] = useState(false);
+
+  useEffect(() => {
+    let timeout: NodeJS.Timeout;
+    const handleMouseMove = () => {
+      setIsActive(true);
+      clearTimeout(timeout);
+      timeout = setTimeout(() => setIsActive(false), 3000);
+    };
+    window.addEventListener("mousemove", handleMouseMove);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      clearTimeout(timeout);
+    };
+  }, []);
 
   const addLog = (message: string, type: TerminalLog["type"]) => {
     setTerminalLogs((prev) => [...prev, { id: Date.now(), message, type }]);
   };
 
   const menuItems: { id: TabType; label: string; icon: React.ReactNode }[] = [
-    { id: "dashboard", label: "لوحة التحكم", icon: <LayoutGrid size={20} /> },
     { id: "whatsapp", label: "حملة واتساب", icon: <MessageSquare size={20} /> },
     { id: "scraper", label: "استخراج البيانات", icon: <Database size={20} /> },
     { id: "logs", label: "سجل العمليات", icon: <Clock size={20} /> },
@@ -172,6 +184,16 @@ function Dashboard({ user, onLogout }: { user: FirebaseUser; onLogout: () => voi
 
   return (
     <div className="flex min-h-screen">
+      {/* Global Background Overlay */}
+      <div
+        className="fixed inset-0 transition-opacity duration-500 bg-cover bg-center bg-no-repeat -z-20"
+        style={{ backgroundImage: `url('https://i.postimg.cc/SxwnykmF/dark.jpg')`, opacity: isActive ? 0 : 1 }}
+      />
+      <div
+        className="fixed inset-0 transition-opacity duration-500 bg-cover bg-center bg-no-repeat -z-10"
+        style={{ backgroundImage: `url('https://i.postimg.cc/SRDXq9KS/light.jpg')`, opacity: isActive ? 1 : 0 }}
+      />
+
       {/* Sidebar */}
       <div className="w-64 h-screen bg-black/40 backdrop-blur-xl border-l border-white/10 flex flex-col fixed right-0 top-0">
         <div className="p-6 border-b border-white/10">
@@ -212,21 +234,7 @@ function Dashboard({ user, onLogout }: { user: FirebaseUser; onLogout: () => voi
       </div>
 
       {/* Main Content */}
-      <div
-        className="flex-1 mr-64 flex flex-col"
-        onMouseEnter={() => setIsHovering(true)}
-        onMouseLeave={() => setIsHovering(false)}
-      >
-        {/* Background Transition */}
-        <div
-          className="fixed inset-0 transition-opacity duration-500 bg-cover bg-center bg-no-repeat -z-20"
-          style={{ backgroundImage: `url('https://i.postimg.cc/SxwnykmF/dark.jpg')`, opacity: isHovering ? 0 : 1 }}
-        />
-        <div
-          className="fixed inset-0 transition-opacity duration-500 bg-cover bg-center bg-no-repeat -z-10"
-          style={{ backgroundImage: `url('https://i.postimg.cc/SRDXq9KS/light.jpg')`, opacity: isHovering ? 1 : 0 }}
-        />
-
+      <div className="flex-1 mr-64 flex flex-col">
         {/* Header */}
         <header className="h-16 border-b border-white/10 flex items-center justify-between px-6 bg-black/20 backdrop-blur-sm">
           <h1 className="text-xl font-bold text-white">إدارة المهام الذكية</h1>
@@ -274,7 +282,6 @@ function Dashboard({ user, onLogout }: { user: FirebaseUser; onLogout: () => voi
                   </div>
                 )}
 
-                {activeTab === "dashboard" && <DashboardContent />}
                 {activeTab === "whatsapp" && <WhatsAppForm addLog={addLog} />}
                 {activeTab === "scraper" && <ScraperForm addLog={addLog} />}
                 {activeTab === "logs" && <LogsContent logs={terminalLogs} />}
@@ -284,37 +291,6 @@ function Dashboard({ user, onLogout }: { user: FirebaseUser; onLogout: () => voi
             </motion.div>
           </AnimatePresence>
         </main>
-      </div>
-    </div>
-  );
-}
-
-function DashboardContent() {
-  const stats = [
-    { label: "الرسائل المرسلة", value: "12,847", change: "+12%" },
-    { label: "الشركات المستخرجة", value: "3,291", change: "+8%" },
-    { label: "نسبة النجاح", value: "94.2%", change: "+2%" },
-    { label: "العمليات النشطة", value: "7", change: "" },
-  ];
-
-  return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {stats.map((stat, i) => (
-          <motion.div
-            key={i}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.1 }}
-            className="bg-white/5 border border-white/10 rounded-xl p-5"
-          >
-            <p className="text-white/50 text-sm mb-1">{stat.label}</p>
-            <div className="flex items-end justify-between">
-              <p className="text-2xl font-bold text-white">{stat.value}</p>
-              {stat.change && <span className="text-emerald-400 text-sm">{stat.change}</span>}
-            </div>
-          </motion.div>
-        ))}
       </div>
     </div>
   );
@@ -406,18 +382,34 @@ function ScraperForm({ addLog }: { addLog: (msg: string, type: TerminalLog["type
   const [loading, setLoading] = useState(false);
   
   const cities = [
-    "القاهرة",
-    "الإسكندرية", 
-    "الجيزة",
-    "شرم الشيخ",
-    "الأقصر",
-    "أسوان",
-    "المنصورة",
-    "طنطا",
-    "الزقازيق",
-    "بورسعيد",
-    "السويس",
-    "دمياط",
+    // المملكة العربية السعودية
+    'الرياض', 'جدة', 'الدمام', 'مكة المكرمة', 'المدينة المنورة', 'الخبر', 'الطائف', 'تبوك', 'أبها',
+    'الأحساء', 'الجبيل', 'حائل', 'نجران', 'جازان', 'ينبع', 'بريدة', 'عنيزة', 'الرس', 'سكاكا', 'عرعر', 
+    'الباحة', 'الخفجي', 'حفر الباطن', 'خميس مشيط', 'القطيف', 'ظهران', 'بيشة', 'القنفذة', 'محايل عسير', 'الخرج', 'المجمعة', 'الزلفي',
+    // الإمارات
+    'أبوظبي', 'دبي', 'الشارقة', 'العين', 'عجمان', 'رأس الخيمة', 'الفجيرة', 'أم القيوين', 'خورفكان', 'دبا الفجيرة', 'دبا الحصن', 'كلباء', 'الرويس', 'حتا',
+    // الكويت
+    'الكويت', 'الأحمدي', 'حولي', 'الفروانية', 'الجهراء', 'مبارك الكبير', 'السالمية', 'الفحيحيل', 'الصباحية', 'الفنطاس', 'الرقعي', 'سلوى',
+    // قطر
+    'الدوحة', 'الريان', 'الوكرة', 'الخور', 'أم صلال', 'الشحانية', 'الشمال', 'دخان', 'مسيعيد', 'الضعاين', 'لوسيل',
+    // البحرين
+    'المنامة', 'المحرق', 'الرفاع', 'مدينة عيسى', 'مدينة حمد', 'مدينة زايد', 'عالي', 'سترة', 'البديع', 'الحد', 'الزلاق',
+    // عُمان
+    'مسقط', 'صلالة', 'صحار', 'نزوى', 'صور', 'البريمي', 'السيب', 'الرستاق', 'مطرح', 'بوشر', 'العامرات', 'خصب', 'إبراء', 'عبري', 'الدقم',
+    // اليمن
+    'صنعاء', 'عدن', 'تعز', 'المكلا', 'الحديدة',
+    // مصر
+    'القاهرة', 'الإسكندرية', 'الجيزة', 'شرم الشيخ', 'الغردقة', 'الأقصر', 'أسوان', 'المنصورة',
+    // الأردن
+    'عمّان', 'إربد', 'الزرقاء', 'العقبة',
+    // فلسطين
+    'القدس', 'رام الله', 'غزة', 'نابلس',
+    // لبنان وسوريا والعراق
+    'بيروت', 'طرابلس', 'دمشق', 'حلب', 'بغداد', 'الموصل', 'البصرة', 'أربيل',
+    // شمال أفريقيا
+    'الدار البيضاء', 'الرباط', 'مراكش', 'طنجة', 'فاس', 'أغادير', 'الجزائر', 'وهران', 'قسنطينة', 'تونس', 'سوسة', 'صفاقس', 'ليبيا', 'بنغازي', 'مصراتة',
+    // أفريقيا
+    'الخرطوم', 'أديس أبابا', 'نيروبي', 'لاغوس', 'دار السلام', 'أبوجا', 'أكرا', 'نواكشوط', 'جيبوتي', 'مقديشو', 'موروني',
   ];
 
   const handleSubmit = async (e: React.FormEvent) => {
