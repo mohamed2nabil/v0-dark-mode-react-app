@@ -323,7 +323,6 @@ function DashboardContent() {
 function WhatsAppForm({ addLog }: { addLog: (msg: string, type: TerminalLog["type"]) => void }) {
   const [formData, setFormData] = useState({ sendCount: "30", managerName: "", phoneNumber: "+201145252173", message: "" });
   const [loading, setLoading] = useState(false);
-  const phoneNumbers = ["+201145252173", "+201234567890", "+201098765432"];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -331,7 +330,7 @@ function WhatsAppForm({ addLog }: { addLog: (msg: string, type: TerminalLog["typ
     addLog("جاري إرسال الحملة...", "info");
 
     try {
-      const response = await fetch("https://n8n.an8n.store/webhook-test/sender", {
+      const response = await fetch("https://n8n.an8n.store/webhook/sender", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
@@ -369,19 +368,14 @@ function WhatsAppForm({ addLog }: { addLog: (msg: string, type: TerminalLog["typ
         </div>
         <div>
           <label className="block text-white/70 text-sm mb-2">رقم الموبايل المُرسِل</label>
-          <div className="relative">
-            <select
-              value={formData.phoneNumber}
-              onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
-              className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white appearance-none focus:outline-none focus:border-emerald-500/50 transition-colors cursor-pointer"
-              dir="ltr"
-            >
-              {phoneNumbers.map((num) => (
-                <option key={num} value={num} className="bg-gray-900">{num}</option>
-              ))}
-            </select>
-            <ChevronDown size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/50 pointer-events-none" />
-          </div>
+          <input
+            type="text"
+            value={formData.phoneNumber}
+            onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
+            className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:border-emerald-500/50 transition-colors"
+            placeholder="+201145252173"
+            dir="ltr"
+          />
         </div>
       </div>
 
@@ -408,8 +402,23 @@ function WhatsAppForm({ addLog }: { addLog: (msg: string, type: TerminalLog["typ
 }
 
 function ScraperForm({ addLog }: { addLog: (msg: string, type: TerminalLog["type"]) => void }) {
-  const [formData, setFormData] = useState({ activity: "", city: "", companyCount: "100" });
+  const [formData, setFormData] = useState({ activity: "", city: "" });
   const [loading, setLoading] = useState(false);
+  
+  const cities = [
+    "القاهرة",
+    "الإسكندرية", 
+    "الجيزة",
+    "شرم الشيخ",
+    "الأقصر",
+    "أسوان",
+    "المنصورة",
+    "طنطا",
+    "الزقازيق",
+    "بورسعيد",
+    "السويس",
+    "دمياط",
+  ];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -417,7 +426,7 @@ function ScraperForm({ addLog }: { addLog: (msg: string, type: TerminalLog["type
     addLog("جاري استخراج البيانات...", "info");
 
     try {
-      const response = await fetch("https://n8n.an8n.store/webhook-test/leads", {
+      const response = await fetch("https://n8n.an8n.store/webhook/leads", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
@@ -432,36 +441,34 @@ function ScraperForm({ addLog }: { addLog: (msg: string, type: TerminalLog["type
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label className="block text-white/70 text-sm mb-2">النشاط</label>
+          <label className="block text-white/70 text-sm mb-2">النشاط <span className="text-red-400">*</span></label>
           <input
             type="text"
             value={formData.activity}
             onChange={(e) => setFormData({ ...formData, activity: e.target.value })}
             className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:border-emerald-500/50 transition-colors"
-            placeholder="مطاعم، عيادات..."
+            placeholder="شركة مقاولات"
+            required
           />
         </div>
         <div>
-          <label className="block text-white/70 text-sm mb-2">المدينة</label>
-          <input
-            type="text"
-            value={formData.city}
-            onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-            className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:border-emerald-500/50 transition-colors"
-            placeholder="القاهرة"
-          />
-        </div>
-        <div>
-          <label className="block text-white/70 text-sm mb-2">عدد الشركات</label>
-          <input
-            type="number"
-            value={formData.companyCount}
-            onChange={(e) => setFormData({ ...formData, companyCount: e.target.value })}
-            className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:border-emerald-500/50 transition-colors"
-            placeholder="100"
-          />
+          <label className="block text-white/70 text-sm mb-2">المدينة <span className="text-red-400">*</span></label>
+          <div className="relative">
+            <select
+              value={formData.city}
+              onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+              className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white appearance-none focus:outline-none focus:border-emerald-500/50 transition-colors cursor-pointer"
+              required
+            >
+              <option value="" disabled className="bg-gray-900">اختر المدينة...</option>
+              {cities.map((city) => (
+                <option key={city} value={city} className="bg-gray-900">{city}</option>
+              ))}
+            </select>
+            <ChevronDown size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/50 pointer-events-none" />
+          </div>
         </div>
       </div>
 
