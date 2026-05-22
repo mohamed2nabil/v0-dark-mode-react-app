@@ -42,6 +42,7 @@ import {
   DEFAULT_COUNTRIES,
   CITY_NEIGHBORHOODS,
   normalizeArabic,
+  sanitizeNeighborhoods,
 } from "@/lib/citiesData";
 
 type TabType = "whatsapp" | "scraper" | "logs" | "neighborhoods";
@@ -162,58 +163,83 @@ function Dashboard({ user, onLogout }: { user: FirebaseUser; onLogout: () => voi
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const addLog = (message: string, type: TerminalLog["type"]) => {
-    setTerminalLogs((prev) => [...prev, { id: Date.now(), message, type }]);
+    const timeStr = new Date().toLocaleTimeString("ar-EG", {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+    setTerminalLogs((prev) => [...prev, { id: Date.now(), message, type, time: timeStr }]);
   };
 
   // Lifted custom cities state
   const [customCities, setCustomCities] = useState<CustomCity[]>([]);
 
-  // Lifted neighborhoods state
-  const [neighborhoods, setNeighborhoods] = useState<Record<string, string[]>>({});
+  // Lifted neighborhoods state - initialize to clean clone of defaults directly to avoid hydration mismatch
+  const [neighborhoods, setNeighborhoods] = useState<Record<string, string[]>>(() => 
+    sanitizeNeighborhoods(null)
+  );
 
-  // Load custom cities from localStorage
+  // Load custom cities from localStorage with robust structure verification
   useEffect(() => {
     try {
       const stored = localStorage.getItem("custom_countries_cities");
       if (stored) {
-        setCustomCities(JSON.parse(stored));
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          const cleanCities = parsed.filter(
+            (c) =>
+              c &&
+              typeof c === "object" &&
+              typeof c.cityName === "string" &&
+              typeof c.countryName === "string" &&
+              typeof c.lat === "number" &&
+              typeof c.lng === "number"
+          );
+          setCustomCities(cleanCities);
+        } else {
+          setCustomCities([]);
+        }
       }
     } catch (e) {
       console.error("Failed to load custom cities", e);
+      setCustomCities([]);
     }
   }, []);
 
-  // Load neighborhoods from localStorage or fallback to CITY_NEIGHBORHOODS
+  // Load neighborhoods from localStorage with extremely robust parsing and fallback
   useEffect(() => {
     try {
       const stored = localStorage.getItem("custom_neighborhoods");
-      if (stored) {
-        setNeighborhoods(JSON.parse(stored));
-      } else {
-        setNeighborhoods(CITY_NEIGHBORHOODS);
-      }
+      const parsed = stored ? JSON.parse(stored) : null;
+      setNeighborhoods(sanitizeNeighborhoods(parsed));
     } catch (e) {
       console.error("Failed to load neighborhoods", e);
-      setNeighborhoods(CITY_NEIGHBORHOODS);
+      setNeighborhoods(sanitizeNeighborhoods(null));
     }
   }, []);
 
   const saveNeighborhoods = (newNeighborhoods: Record<string, string[]>) => {
+    console.log("[DEBUG] saveNeighborhoods called with:", newNeighborhoods);
     setNeighborhoods(newNeighborhoods);
+    console.log("[DEBUG] setNeighborhoods called");
     try {
       localStorage.setItem("custom_neighborhoods", JSON.stringify(newNeighborhoods));
+      console.log("[DEBUG] localStorage saved");
     } catch (e) {
       console.error("Failed to save neighborhoods", e);
     }
   };
 
-  const saveCustomCities = (newCities: CustomCity[]) => {
-    setCustomCities(newCities);
-    try {
-      localStorage.setItem("custom_countries_cities", JSON.stringify(newCities));
-    } catch (e) {
-      console.error("Failed to save custom cities", e);
-    }
+  const saveCustomCities = (newCities: CustomCity[] | ((prev: CustomCity[]) => CustomCity[])) => {
+    setCustomCities((prev) => {
+      const updated = typeof newCities === "function" ? newCities(prev) : newCities;
+      try {
+        localStorage.setItem("custom_countries_cities", JSON.stringify(updated));
+      } catch (e) {
+        console.error("Failed to save custom cities", e);
+      }
+      return updated;
+    });
   };
 
   const menuItems: { id: TabType; label: string; icon: React.ReactNode }[] = [
@@ -1281,7 +1307,7 @@ function Terminal({ logs }: { logs: TerminalLog[] }) {
         ) : (
           logs.map((log) => (
             <div key={log.id} className={`mb-2 ${log.type === "success" ? "text-emerald-400" : log.type === "error" ? "text-red-400" : "text-white/70"}`}>
-              <span className="text-white/30">[{new Date().toLocaleTimeString("ar-EG")}]</span> {log.message}
+              <span className="text-white/30">[{log.time || new Date().toLocaleTimeString("ar-EG")}]</span> {log.message}
             </div>
           ))
         )}
@@ -1356,93 +1382,152 @@ function NeighborhoodsManager({
     return "";
   })();
 
-  const currentNeighborhoods = allNeighborhoods[selectedCityName] || [];
+  const currentNeighborhoods = Array.isArray(allNeighborhoods[selectedCityName])
+    ? allNeighborhoods[selectedCityName]
+    : [];
 
-  const handleAddNeighborhood = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleAddNeighborhood = () => {
+    console.log("[DEBUG] handleAddNeighborhood called, newNeighborhood:", newNeighborhood);
     setError("");
-
     const name = newNeighborhood.trim();
-    if (!name) return;
-
-    // Check duplicate
-    const normalizedNew = normalizeArabic(name).toLowerCase();
-    const isDuplicate = currentNeighborhoods.some(
-      (n) => normalizeArabic(n).toLowerCase() === normalizedNew
-    );
-
-    if (isDuplicate) {
-      setError("هذا الحي موجود بالفعل في هذه المدينة!");
-      addLog(`فشل إضافة حي: "${name}" مكرر بالفعل في "${selectedCityName}"`, "error");
+    if (!name) {
+      addLog("فشل إضافة الحي: الاسم فارغ", "error");
       return;
     }
 
-    const updated = {
-      ...allNeighborhoods,
-      [selectedCityName]: [...currentNeighborhoods, name],
-    };
-    saveNeighborhoods(updated);
-    setNewNeighborhood("");
-    addLog(`تمت إضافة الحي "${name}" إلى "${selectedCityName}" بنجاح`, "success");
+    addLog(`جاري محاولة إضافة حي "${name}" إلى "${selectedCityName}"...`, "info");
+
+    try {
+      const normalizedNew = normalizeArabic(name).toLowerCase();
+      const currentList = Array.isArray(allNeighborhoods[selectedCityName])
+        ? allNeighborhoods[selectedCityName]
+        : [];
+
+      console.log("[DEBUG] selectedCityName:", selectedCityName);
+      console.log("[DEBUG] currentList:", currentList);
+
+      const isDuplicate = currentList.some(
+        (n) => typeof n === "string" && normalizeArabic(n).toLowerCase() === normalizedNew
+      );
+
+      if (isDuplicate) {
+        setError("هذا الحي موجود بالفعل في هذه المدينة!");
+        addLog(`فشل إضافة حي: "${name}" مكرر بالفعل في "${selectedCityName}"`, "error");
+        return;
+      }
+
+      const updatedList = [
+        ...currentList.filter(item => typeof item === 'string' && item.trim() !== ""),
+        name
+      ];
+
+      const updatedNeighborhoods = {
+        ...allNeighborhoods,
+        [selectedCityName]: updatedList,
+      };
+
+      console.log("[DEBUG] updatedNeighborhoods:", updatedNeighborhoods);
+      saveNeighborhoods(updatedNeighborhoods);
+      
+      setNewNeighborhood("");
+      addLog(`تمت إضافة الحي "${name}" إلى "${selectedCityName}" بنجاح`, "success");
+    } catch (err: any) {
+      console.error("Error adding neighborhood:", err);
+      const errMsg = err?.message || String(err);
+      setError(`حدث خطأ أثناء إضافة الحي: ${errMsg}`);
+      addLog(`خطأ برميجي: ${errMsg}`, "error");
+    }
   };
 
   const handleDeleteNeighborhood = (index: number) => {
-    const neighborhoodToDelete = currentNeighborhoods[index];
-    const filtered = currentNeighborhoods.filter((_, i) => i !== index);
-    const updated = {
-      ...allNeighborhoods,
-      [selectedCityName]: filtered,
-    };
-    saveNeighborhoods(updated);
-    addLog(`تم حذف الحي "${neighborhoodToDelete}" من "${selectedCityName}"`, "success");
-    if (editingIndex === index) {
-      setEditingIndex(null);
+    try {
+      const currentList = Array.isArray(allNeighborhoods[selectedCityName])
+        ? allNeighborhoods[selectedCityName]
+        : [];
+      const neighborhoodToDelete = currentList[index];
+      
+      const filteredList = currentList.filter((_, i) => i !== index);
+      const updatedNeighborhoods = {
+        ...allNeighborhoods,
+        [selectedCityName]: filteredList,
+      };
+
+      saveNeighborhoods(updatedNeighborhoods);
+
+      addLog(`تم حذف الحي "${neighborhoodToDelete}" من "${selectedCityName}"`, "success");
+      if (editingIndex === index) {
+        setEditingIndex(null);
+      }
+    } catch (err: any) {
+      console.error("Error deleting neighborhood:", err);
+      const errMsg = err?.message || String(err);
+      addLog(`خطأ أثناء حذف الحي: ${errMsg}`, "error");
     }
   };
 
   const handleStartEdit = (index: number) => {
+    const currentList = Array.isArray(allNeighborhoods[selectedCityName])
+      ? allNeighborhoods[selectedCityName]
+      : [];
     setEditingIndex(index);
-    setEditingText(currentNeighborhoods[index]);
+    setEditingText(currentList[index] || "");
   };
 
   const handleSaveEdit = (index: number) => {
-    const text = editingText.trim();
-    if (!text) return;
+    try {
+      const text = editingText.trim();
+      if (!text) return;
 
-    // Check duplicate (excluding current index)
-    const normalizedNew = normalizeArabic(text).toLowerCase();
-    const isDuplicate = currentNeighborhoods.some(
-      (n, i) => i !== index && normalizeArabic(n).toLowerCase() === normalizedNew
-    );
+      const normalizedNew = normalizeArabic(text).toLowerCase();
+      const currentList = Array.isArray(allNeighborhoods[selectedCityName])
+        ? allNeighborhoods[selectedCityName]
+        : [];
 
-    if (isDuplicate) {
-      setError("هذا الاسم موجود بالفعل لحي آخر!");
-      addLog(`فشل تعديل الحي: الاسم الجديد "${text}" مكرر`, "error");
-      return;
+      const isDuplicate = currentList.some(
+        (n, i) => i !== index && typeof n === "string" && normalizeArabic(n).toLowerCase() === normalizedNew
+      );
+
+      if (isDuplicate) {
+        setError("هذا الاسم موجود بالفعل لحي آخر!");
+        addLog(`فشل تعديل الحي: الاسم الجديد "${text}" مكرر`, "error");
+        return;
+      }
+
+      const updatedList = [...currentList];
+      updatedList[index] = text;
+      
+      const updatedNeighborhoods = {
+        ...allNeighborhoods,
+        [selectedCityName]: updatedList,
+      };
+
+      saveNeighborhoods(updatedNeighborhoods);
+
+      const oldName = currentList[index];
+      setEditingIndex(null);
+      addLog(`تم تعديل الحي من "${oldName}" إلى "${text}" في "${selectedCityName}" بنجاح`, "success");
+    } catch (err: any) {
+      console.error("Error saving edit:", err);
+      const errMsg = err?.message || String(err);
+      addLog(`خطأ أثناء تعديل الحي: ${errMsg}`, "error");
     }
-
-    const updatedList = [...currentNeighborhoods];
-    const oldName = updatedList[index];
-    updatedList[index] = text;
-
-    const updated = {
-      ...allNeighborhoods,
-      [selectedCityName]: updatedList,
-    };
-    saveNeighborhoods(updated);
-    setEditingIndex(null);
-    addLog(`تم تعديل الحي من "${oldName}" إلى "${text}" في "${selectedCityName}" بنجاح`, "success");
   };
 
   const handleResetToDefault = () => {
-    const defaultNeighborhoods = CITY_NEIGHBORHOODS[selectedCityName];
-    if (defaultNeighborhoods) {
-      const updated = {
-        ...allNeighborhoods,
-        [selectedCityName]: [...defaultNeighborhoods],
-      };
-      saveNeighborhoods(updated);
-      addLog(`تمت إعادة تعيين أحياء "${selectedCityName}" إلى الوضع الافتراضي للبلدة`, "success");
+    try {
+      const defaultNeighborhoods = CITY_NEIGHBORHOODS[selectedCityName];
+      if (defaultNeighborhoods) {
+        const updatedNeighborhoods = {
+          ...allNeighborhoods,
+          [selectedCityName]: [...defaultNeighborhoods],
+        };
+        saveNeighborhoods(updatedNeighborhoods);
+        addLog(`تمت إعادة تعيين أحياء "${selectedCityName}" إلى الوضع الافتراضي للبلدة`, "success");
+      }
+    } catch (err: any) {
+      console.error("Error resetting to default:", err);
+      const errMsg = err?.message || String(err);
+      addLog(`خطأ أثناء إعادة التعيين: ${errMsg}`, "error");
     }
   };
 
@@ -1564,8 +1649,8 @@ function NeighborhoodsManager({
           </div>
         )}
 
-        {/* Add new neighborhood inline form */}
-        <form onSubmit={handleAddNeighborhood} className="flex gap-2 mb-4">
+        {/* Add new neighborhood inline input (without standard form submit to prevent any reload) */}
+        <div className="flex gap-2 mb-4">
           <input
             type="text"
             value={newNeighborhood}
@@ -1573,18 +1658,25 @@ function NeighborhoodsManager({
               setNewNeighborhood(e.target.value);
               setError("");
             }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleAddNeighborhood();
+              }
+            }}
             className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/30 focus:outline-none focus:border-emerald-500/60 transition-colors"
             placeholder="مثال: حي النخيل، حي الياسمين..."
           />
           <button
-            type="submit"
+            type="button"
+            onClick={handleAddNeighborhood}
             disabled={!newNeighborhood.trim()}
-            className="bg-emerald-500 hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold px-5 py-2.5 rounded-xl transition-all flex items-center gap-1.5"
+            className="bg-emerald-500 hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold px-5 py-2.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
           >
             <Plus size={16} />
             <span>إضافة حي</span>
           </button>
-        </form>
+        </div>
 
         {/* Neighborhood scroll list */}
         <div className="flex-1 overflow-y-auto pr-1 space-y-2 scrollbar-thin">

@@ -194,3 +194,40 @@ export const normalizeArabic = (text: string): string => {
     .replace(/ى/g, 'ي')
     .trim();
 };
+
+export function sanitizeNeighborhoods(obj: any): Record<string, string[]> {
+  const result: Record<string, string[]> = {};
+  
+  // Pre-populate with a clean clone of default neighborhoods
+  for (const city of Object.keys(CITY_NEIGHBORHOODS)) {
+    result[city] = [...CITY_NEIGHBORHOODS[city]];
+  }
+
+  if (obj && typeof obj === "object") {
+    if (Array.isArray(obj)) {
+      // If it's an array, it's a corrupted format from an old version.
+      // Filter out valid strings and associate them with Riyadh as fallback.
+      const stringArr = obj
+        .filter((item): item is string => typeof item === "string" && item.trim() !== "")
+        .map((item) => item.trim());
+      if (stringArr.length > 0) {
+        result["الرياض"] = Array.from(new Set([...(result["الرياض"] || []), ...stringArr]));
+      }
+    } else {
+      // It's an object/dictionary
+      for (const key of Object.keys(obj)) {
+        const val = obj[key];
+        if (Array.isArray(val)) {
+          const stringArr = val
+            .filter((item): item is string => item !== null && item !== undefined && String(item).trim() !== "")
+            .map((item) => String(item).trim());
+          result[key] = Array.from(new Set(stringArr));
+        } else if (typeof val === "string" && val.trim() !== "") {
+          result[key] = [val.trim()];
+        }
+      }
+    }
+  }
+
+  return result;
+}
