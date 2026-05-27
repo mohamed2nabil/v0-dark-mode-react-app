@@ -408,11 +408,18 @@ function Dashboard({ user, onLogout }: { user: FirebaseUser; onLogout: () => voi
 }
 
 function WhatsAppForm({ addLog }: { addLog: (msg: string, type: TerminalLog["type"]) => void }) {
-  const [formData, setFormData] = useState({ sendCount: "30", managerName: "", phoneNumber: "+201145252173", message: "" });
+  const [formData, setFormData] = useState({ sendCount: "30", managerName: "", phoneNumber: "966562060159", message: "" });
   const [loading, setLoading] = useState(false);
+  const [useCustomNumber, setUseCustomNumber] = useState(false);
+  const [customPhoneNumber, setCustomPhoneNumber] = useState("");
+  const [sent, setSent] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+
+  const PREDEFINED_NUMBERS = ["966562060159", "966545060936", "966590253005"];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitError("");
     setLoading(true);
     addLog("جاري إرسال الحملة...", "info");
 
@@ -422,16 +429,58 @@ function WhatsAppForm({ addLog }: { addLog: (msg: string, type: TerminalLog["typ
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
       });
-      addLog(response.ok ? "تم إرسال الحملة بنجاح!" : "فشل في إرسال الحملة", response.ok ? "success" : "error");
+
+      if (!response.ok) {
+        const errorMsg = "فشل في إرسال الحملة";
+        addLog(errorMsg, "error");
+        setSubmitError(errorMsg);
+        return;
+      }
+
+      addLog("تم إرسال الحملة بنجاح!", "success");
+      setSent(true);
+      setFormData({ sendCount: "30", managerName: "", phoneNumber: PREDEFINED_NUMBERS[0], message: "" });
+      setUseCustomNumber(false);
+      setCustomPhoneNumber("");
     } catch {
-      addLog("خطأ في الاتصال بالخادم", "error");
+      const errorMsg = "خطأ في الاتصال بالخادم";
+      addLog(errorMsg, "error");
+      setSubmitError(errorMsg);
     } finally {
       setLoading(false);
     }
   };
 
+  if (sent) {
+    return (
+      <div className="space-y-5 rounded-3xl border border-emerald-500/20 bg-emerald-500/10 p-6">
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-3 text-emerald-200">
+            <Rocket size={20} />
+            <span className="text-lg font-semibold">تم إرسال الحملة بنجاح!</span>
+          </div>
+          <p className="text-white/70 text-sm">
+            تم إكمال الإرسال بنجاح ولا حاجة لإعادة تعبئة النموذج. يمكنك الضغط على الإرسال مرة أخرى لإرسال حملة جديدة.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setSent(false)}
+          className="w-full bg-white/10 hover:bg-white/20 text-white font-semibold px-6 py-3 rounded-xl transition-colors"
+        >
+          إرسال حملة جديدة
+        </button>
+      </div>
+    );
+  }
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {submitError && (
+        <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-red-100">
+          {submitError}
+        </div>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div>
           <label className="block text-white/70 text-sm mb-2">حجم الإرسال</label>
@@ -455,14 +504,63 @@ function WhatsAppForm({ addLog }: { addLog: (msg: string, type: TerminalLog["typ
         </div>
         <div>
           <label className="block text-white/70 text-sm mb-2">رقم الموبايل المُرسِل</label>
-          <input
-            type="text"
-            value={formData.phoneNumber}
-            onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
-            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:border-emerald-500/60 transition-colors"
-            placeholder="+201145252173"
-            dir="ltr"
-          />
+          
+          {/* Phone Number Selection */}
+          {!useCustomNumber ? (
+            <div className="space-y-2">
+              {PREDEFINED_NUMBERS.map((number) => (
+                <button
+                  key={number}
+                  type="button"
+                  onClick={() => setFormData({ ...formData, phoneNumber: number })}
+                  className={`w-full p-3 rounded-xl border transition-all text-right ${
+                    formData.phoneNumber === number
+                      ? "bg-emerald-500/20 border-emerald-500/50 text-white shadow-lg shadow-emerald-500/20"
+                      : "bg-white/5 border-white/10 text-gray-400 hover:bg-white/10 hover:border-white/20"
+                  }`}
+                >
+                  <span className="font-medium" dir="ltr">
+                    {number}
+                  </span>
+                </button>
+              ))}
+              
+              <button
+                type="button"
+                onClick={() => setUseCustomNumber(true)}
+                className="w-full p-3 rounded-xl border border-white/10 bg-white/5 text-gray-400 hover:bg-white/10 hover:border-white/20 transition-all text-sm"
+              >
+                + إدخال رقم مخصص
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <input
+                type="text"
+                value={customPhoneNumber}
+                onChange={(e) => {
+                  const value = e.target.value.replace(/\D/g, "");
+                  setCustomPhoneNumber(value);
+                  setFormData({ ...formData, phoneNumber: value });
+                }}
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/30 focus:outline-none focus:border-emerald-500/60 transition-colors"
+                placeholder="أدخل رقم الهاتف (أرقام فقط)"
+                dir="ltr"
+              />
+              
+              <button
+                type="button"
+                onClick={() => {
+                  setUseCustomNumber(false);
+                  setCustomPhoneNumber("");
+                  setFormData({ ...formData, phoneNumber: PREDEFINED_NUMBERS[0] });
+                }}
+                className="w-full p-3 rounded-xl border border-white/10 bg-white/5 text-gray-400 hover:bg-white/10 hover:border-white/20 transition-all text-sm"
+              >
+                ← العودة للأرقام المعرفة
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
